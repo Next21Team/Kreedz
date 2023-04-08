@@ -3,7 +3,7 @@
 #include <kreedz_util>
 #include <settings_api>
 
-#define USE_MAP_MANAGER_INTERGRATION
+// #define USE_MAP_MANAGER_INTERGRATION
 
 #if defined USE_MAP_MANAGER_INTERGRATION
 	#include <map_manager>
