@@ -16,6 +16,7 @@
 
 #include <kreedz_api>
 #include <kreedz_util>
+#include <settings_api>
 
 #define PLUGIN 	 	"[Kreedz] Weapons"
 #define VERSION 	__DATE__
@@ -24,9 +25,16 @@
 enum _:UserData {
 	ud_MinRank,
 	bool:ud_ResetMaxSpeedHookDisabled,
+    bool:ud_blockWeaponChange,
 };
 
 new g_UserData[MAX_PLAYERS + 1][UserData];
+
+enum OptionsEnum {
+    optBoolBlockWeaponChange,
+};
+
+new g_Options[OptionsEnum];
 
 
 public plugin_init() {
@@ -40,7 +48,6 @@ public plugin_init() {
 
 	RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_m4a1", "ham_Other_Shoot", 1);
 	RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_usp", "ham_Other_Shoot", 1);
-
 	RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_awp", "ham_Other_Shoot", 1);
 	RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_m249", "ham_Other_Shoot", 1);
 	RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_sg552", "ham_Other_Shoot", 1);
@@ -48,14 +55,36 @@ public plugin_init() {
 	RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_p90", "ham_Other_Shoot", 1);
 	RegisterHam(Ham_Weapon_PrimaryAttack, "weapon_scout", "ham_Other_Shoot", 1);
 
+	RegisterHam(Ham_Item_CanHolster, "weapon_knife", "ham_Other_CanHolster");
+	RegisterHam(Ham_Item_CanHolster, "weapon_m4a1", "ham_Other_CanHolster");
+	RegisterHam(Ham_Item_CanHolster, "weapon_usp", "ham_Other_CanHolster");
+	RegisterHam(Ham_Item_CanHolster, "weapon_awp", "ham_Other_CanHolster");
+	RegisterHam(Ham_Item_CanHolster, "weapon_m249", "ham_Other_CanHolster");
+	RegisterHam(Ham_Item_CanHolster, "weapon_sg552", "ham_Other_CanHolster");
+	RegisterHam(Ham_Item_CanHolster, "weapon_famas", "ham_Other_CanHolster");
+	RegisterHam(Ham_Item_CanHolster, "weapon_p90", "ham_Other_CanHolster");
+	RegisterHam(Ham_Item_CanHolster, "weapon_scout", "ham_Other_CanHolster");
+
 	RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "HookResetMaxSpeed", 1);
 
 	RegisterHam(Ham_Spawn, "player", "ham_Spawn_Post", 1);
+
+	bindOptions();
 }
 
 public plugin_precache() {
 	for (new i = 0; i <= MAX_PLAYERS; ++i) {
 		kz_set_min_rank(i, -1);
+	}
+}
+
+bindOptions() {
+	g_Options[optBoolBlockWeaponChange] = find_option_by_name("block_weapon_change");
+}
+
+public OnCellValueChanged(id, optionId, newValue) {
+	if (optionId == g_Options[optBoolBlockWeaponChange]) {
+		g_UserData[id][ud_blockWeaponChange] = !!newValue;
 	}
 }
 
@@ -232,6 +261,26 @@ public ham_Other_Shoot(iEnt) {
 
 	cs_set_user_bpammo(id, iItem, 10);
 	
+	return HAM_IGNORED;
+}
+
+public ham_Other_CanHolster(iEnt) {
+	if (!is_entity(iEnt))
+		return HAM_IGNORED;
+
+	new id = get_member(iEnt, m_pPlayer);
+
+	if (id < 1 || id > MaxClients || !is_user_alive(id))
+		return HAM_IGNORED;
+
+	if (!g_UserData[id][ud_blockWeaponChange])
+		return HAM_IGNORED;
+
+	if (kz_get_timer_state(id) == TIMER_ENABLED) {
+		SetHamReturnInteger(0);
+		return HAM_SUPERCEDE;
+	}
+
 	return HAM_IGNORED;
 }
 

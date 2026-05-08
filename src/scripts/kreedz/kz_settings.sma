@@ -1,5 +1,6 @@
 #include <amxmodx>
 #include <hamsandwich>
+#include <reapi>
 
 #include <kreedz_api>
 #include <kreedz_util>
@@ -26,6 +27,8 @@ enum OptionsEnum {
     optIntMkeyBehavior,
     optIntJumpStats,
     optBoolSpecList,
+    optBoolBlockWeaponChange,
+    optBoolHideWeapon,
 };
 
 new g_Options[OptionsEnum];
@@ -44,9 +47,13 @@ enum UserDataStruct {
     bool:ud_showMenu,
     bool:ud_allowGoto,
     bool:ud_specList,
+    bool:ud_blockWeaponChange,
+    bool:ud_hideWeapon,
 
     ud_mkeyBehavior,
     ud_jumpStats,
+
+    ud_viewModel[64],
 };
 
 new g_UserData[MAX_PLAYERS + 1][UserDataStruct];
@@ -61,6 +68,8 @@ public plugin_init() {
     register_plugin(PLUGIN, VERSION, AUTHOR);
 
     RegisterHam(Ham_Spawn, "player", "fwdOnSpawn", .Post = true)
+
+    RegisterHookChain(RG_CBasePlayerWeapon_DefaultDeploy, "HookDefaultDeploy");
 
     kz_register_cmd("settings", "cmdSettings");
 
@@ -143,6 +152,16 @@ public plugin_precache() {
     // 
     // default: true
     g_Options[optBoolSpecList] = register_players_option_cell("spec_list", FIELD_TYPE_BOOL, true);
+
+    // Block weapon change when timer is enabled:
+    // 
+    // default: false
+    g_Options[optBoolBlockWeaponChange] = register_players_option_cell("block_weapon_change", FIELD_TYPE_BOOL, false);
+    
+    // hide weapon model:
+    //
+    // default: false
+    g_Options[optBoolHideWeapon] = register_players_option_cell("hide_weapon", FIELD_TYPE_BOOL, false);
 }
 
 public client_putinserver(id) {
@@ -158,9 +177,13 @@ public client_putinserver(id) {
     g_UserData[id][ud_showMenu] = false;
     g_UserData[id][ud_allowGoto] = true;
     g_UserData[id][ud_specList] = true;
+    g_UserData[id][ud_blockWeaponChange] = false;
+    g_UserData[id][ud_hideWeapon] = false;
 
     g_UserData[id][ud_mkeyBehavior] = 0;
     g_UserData[id][ud_jumpStats] = DEFAULT_JUMP_STATS;
+
+    g_UserData[id][ud_viewModel][0] = EOS;
 
     remove_task(TASK_USER_INITIALIZED + id)
     set_task(5.0, "taskInitialized", TASK_USER_INITIALIZED + id);
@@ -214,6 +237,18 @@ public OnCellValueChanged(id, optionId, newValue) {
     }
     else if (optionId == g_Options[optBoolSpecList]) {
         g_UserData[id][ud_specList] = !!newValue;
+    }
+    else if (optionId == g_Options[optBoolBlockWeaponChange]) {
+        g_UserData[id][ud_blockWeaponChange] = !!newValue;
+    }
+    else if (optionId == g_Options[optBoolHideWeapon]) {
+       g_UserData[id][ud_hideWeapon] = !!newValue;
+       if (newValue) {
+            get_entvar(id, var_viewmodel, g_UserData[id][ud_viewModel], charsmax(g_UserData[][ud_viewModel]));
+            set_entvar(id, var_viewmodel, "");
+       } else {
+            set_entvar(id, var_viewmodel, g_UserData[id][ud_viewModel]);
+       }
     }
 }
 
@@ -269,6 +304,9 @@ stock settingsMenu(id, page = 0) {
     }
     
     menu_additem(iMenu, szMsg);
+
+    addBoolOption(id, iMenu, szMsg, charsmax(szMsg), "SETTINGSMENU_OPT_HIDEWEAPON", g_UserData[id][ud_hideWeapon]);
+    addBoolOption(id, iMenu, szMsg, charsmax(szMsg), "SETTINGSMENU_OPT_BLOCKCHANGE", g_UserData[id][ud_blockWeaponChange]);
 
     formatex(szMsg, charsmax(szMsg), "%L", id, "BACK");
     menu_setprop(iMenu, MPROP_BACKNAME, szMsg);
@@ -338,6 +376,14 @@ stock settingsMenu(id, page = 0) {
             g_UserData[id][ud_mkeyBehavior] = (g_UserData[id][ud_mkeyBehavior] + 1) % 2;
             set_option_cell(id, g_Options[optIntMkeyBehavior], g_UserData[id][ud_mkeyBehavior]);
         }
+        case 11: {
+            g_UserData[id][ud_hideWeapon] = !g_UserData[id][ud_hideWeapon];
+            set_option_cell(id, g_Options[optBoolHideWeapon], g_UserData[id][ud_hideWeapon]);
+        }
+        case 12: {
+            g_UserData[id][ud_blockWeaponChange] = !g_UserData[id][ud_blockWeaponChange];
+            set_option_cell(id, g_Options[optBoolBlockWeaponChange], g_UserData[id][ud_blockWeaponChange]);
+        }
     }
 
     settingsMenu(id, item / 7);
@@ -357,6 +403,19 @@ public fwdOnSpawn(id) {
     if (g_UserData[id][ud_showMenu]) {
         amxclient_cmd(id, "menu");
     }
+}
+
+public HookDefaultDeploy(iEnt, szViewModel[], szWeaponModel[]) {
+    if (!is_entity(iEnt)) return;
+
+    new id = get_member(iEnt, m_pPlayer);
+
+    if (!is_user_alive(id)) return;
+
+    copy(g_UserData[id][ud_viewModel], charsmax(g_UserData[][ud_viewModel]), szViewModel);
+
+    if (g_UserData[id][ud_hideWeapon])
+        SetHookChainArg(2, ATYPE_STRING, "");
 }
 
 public cmdSetHookSpeed(id) {
